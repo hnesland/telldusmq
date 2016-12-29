@@ -17,7 +17,7 @@
     },
     "Tellstick": {
         "SplitTemperatureAndHumidity": true,
-        "ReplaceTurnOnTo": "ON",
-        "ReplaceTurnOffTo": "OFF"
+        "MapTurnOnTo": "ON",
+        "MapTurnOffTo": "OFF"
     }
 }

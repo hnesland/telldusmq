@@ -108,8 +108,8 @@ func rawTelldusEvent(str *C.char) {
 				topicTemplate = viper.GetString("Mqtt.Events.PublishTopic")
 				payloadTemplate = viper.GetString("Mqtt.Events.PublishPayload")
 
-				turnOn := viper.GetString("Tellstick.ReplaceTurnOnTo")
-				turnOff := viper.GetString("Tellstick.ReplaceTurnOffTo")
+				turnOn := viper.GetString("Tellstick.MapTurnOnTo")
+				turnOff := viper.GetString("Tellstick.MapTurnOffTo")
 
 				if len(turnOn) > 0 && event.Method == "turnon" {
 					event.Method = turnOn
