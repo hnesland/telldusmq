@@ -2,14 +2,15 @@ package main
 
 import (
 	"bytes"
-	MQTT "github.com/eclipse/paho.mqtt.golang"
-	"github.com/fsnotify/fsnotify"
-	"github.com/spf13/viper"
 	"io"
 	"log"
 	"strings"
 	"text/template"
 	"time"
+
+	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/fsnotify/fsnotify"
+	"github.com/spf13/viper"
 )
 
 /*
@@ -106,6 +107,17 @@ func rawTelldusEvent(str *C.char) {
 			if event.Class == "command" {
 				topicTemplate = viper.GetString("Mqtt.Events.PublishTopic")
 				payloadTemplate = viper.GetString("Mqtt.Events.PublishPayload")
+
+				turnOn := viper.GetString("Tellstick.ReplaceTurnOnTo")
+				turnOff := viper.GetString("Tellstick.ReplaceTurnOffTo")
+
+				if len(turnOn) > 0 && event.Method == "turnon" {
+					event.Method = turnOn
+				}
+
+				if len(turnOff) > 0 && event.Method == "turnoff" {
+					event.Method = turnOff
+				}
 			} else {
 				topicTemplate = viper.GetString("Mqtt.Sensors.PublishTopic")
 				payloadTemplate = viper.GetString("Mqtt.Sensors.PublishPayload")
