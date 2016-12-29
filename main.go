@@ -15,9 +15,6 @@ import (
 /*
 #cgo LDFLAGS: -L. -ltelldus-core
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
 #include <telldus-core.h>
 
 void rawTelldusEvent(char *);
