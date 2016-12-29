@@ -1,0 +1,18 @@
+{
+    "Mqtt": {
+        "Broker": "tcp://localhost:1883",
+        "ClientId": "TelldusMq",
+        "Username": "mquser",
+        "Password": "mquser",
+        "Events": {
+            "PublishTopic": "tellstick/events/{{.Protocol}}/{{.Model}}/{{.House}}/{{.Unit}}/{{.Group}}",
+            "PublishPayload": "{{.Method}}",
+            "SubscribeTopic": "tellstick/events"
+        },
+        "Sensors": {
+            "PublishTopic": "tellstick/sensors/{{.Protocol}}/{{.Model}}/{{.House}}/{{.Unit}}/{{.Group}}",
+            "PublishPayload": "Temp: {{.Temp}} Humidity: {{.Humidity}}",
+            "SubscribeTopic": "tellstick/sensors"
+        }
+    }
+}
