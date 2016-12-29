@@ -10,7 +10,7 @@
             "SubscribeTopic": "tellstick/events"
         },
         "Sensors": {
-            "PublishTopic": "tellstick/sensors/{{.Protocol}}/{{.Model}}/{{.Id}}//{{.DataType}}",
+            "PublishTopic": "tellstick/sensors/{{.Protocol}}/{{.Model}}/{{.Id}}/{{.DataType}}",
             "PublishPayload": "{{.Value}}",
             "SubscribeTopic": "tellstick/sensors"
         }
