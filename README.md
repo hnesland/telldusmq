@@ -34,8 +34,12 @@ The MQTT parameters for topic and payload, can contain template variables (from 
   - Id
   - Temp
   - Humidity
+  - Value
+  - DataType
 
 We can then use the variables like this: `Temperature for id#{{.Id}} is: {{.Temp}}`
+
+Some sensors supports both temperature and humidity and if you wish to have a separate event for both these types, you can set the configuration item `Tellstick => SplitTemperatureAndHumidity` to `true`. The `Value` property will contain the value (temperature or humidity) and the `DataType` property will contain `temp` or `humidity`. The sample configuration reflects this.
 
 # Reporting Bugs
 

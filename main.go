@@ -42,6 +42,8 @@ type TelldusEvent struct {
 	Id       string
 	Temp     string
 	Humidity string
+	Value    string
+	DataType string
 }
 
 var mqttClient MQTT.Client
@@ -57,7 +59,9 @@ func rawTelldusEvent(str *C.char) {
 		Group:    "0",
 		Temp:     "0",
 		Humidity: "0",
-		Method:   "0"}
+		Method:   "0",
+		Value:    "0",
+		DataType: ""}
 	for _, elm := range data {
 		if len(elm) != 0 {
 			propval := strings.Split(elm, ":")
@@ -97,47 +101,60 @@ func rawTelldusEvent(str *C.char) {
 				break
 			}
 		} else {
-			var publishTemplateString string
-			var payloadTemplateString string
+			var topicTemplate string
+			var payloadTemplate string
 			if event.Class == "command" {
-				publishTemplateString = viper.GetString("Mqtt.Events.PublishTopic")
-				payloadTemplateString = viper.GetString("Mqtt.Events.PublishPayload")
+				topicTemplate = viper.GetString("Mqtt.Events.PublishTopic")
+				payloadTemplate = viper.GetString("Mqtt.Events.PublishPayload")
 			} else {
-				publishTemplateString = viper.GetString("Mqtt.Sensors.PublishTopic")
-				payloadTemplateString = viper.GetString("Mqtt.Sensors.PublishPayload")
+				topicTemplate = viper.GetString("Mqtt.Sensors.PublishTopic")
+				payloadTemplate = viper.GetString("Mqtt.Sensors.PublishPayload")
+				event.Value = event.Temp
+				event.DataType = "temp"
 			}
 
-			publishTemplate, err := template.New("publish").Parse(publishTemplateString)
-			if err != nil {
-				log.Panicf("Error parsing publish template: %v", err)
-			}
+			var topicString string
+			var payloadString string
 
-			var publishBuffer bytes.Buffer
-			publishWriter := io.Writer(&publishBuffer)
-			err = publishTemplate.Execute(publishWriter, event)
+			topicString = parseTemplate(topicTemplate, event)
+			payloadString = parseTemplate(payloadTemplate, event)
 
-			if err != nil {
-				log.Panicf("Error executing publish template: %v", err)
-			}
+			var token MQTT.Token
 
-			payloadTemplate, err := template.New("publish").Parse(payloadTemplateString)
-			if err != nil {
-				log.Panicf("Error parsing payload template: %v", err)
-			}
-
-			var payloadBuffer bytes.Buffer
-			payloadWriter := io.Writer(&payloadBuffer)
-			err = payloadTemplate.Execute(payloadWriter, event)
-
-			if err != nil {
-				log.Panicf("Error executing payload template: %v", err)
-			}
-
-			log.Printf("Publish to '%s' with '%s'\n", publishBuffer.String(), payloadBuffer.String())
-			token := mqttClient.Publish(publishBuffer.String(), 0, false, payloadBuffer.String())
+			log.Printf("Publish to '%s' with '%s'\n", topicString, payloadString)
+			token = mqttClient.Publish(topicString, 0, false, payloadString)
 			token.Wait()
+
+			// Send a duplicate event for humidity
+			if viper.GetBool("Tellstick.SplitTemperatureAndHumidity") && event.Class == "sensor" {
+				event.DataType = "humidity"
+				event.Value = event.Humidity
+				topicString = parseTemplate(topicTemplate, event)
+				payloadString = parseTemplate(payloadTemplate, event)
+
+				log.Printf("Publish to '%s' with '%s'\n", topicString, payloadString)
+				token = mqttClient.Publish(topicString, 0, false, payloadString)
+				token.Wait()
+			}
 		}
 	}
+}
+
+func parseTemplate(templateString string, event *TelldusEvent) string {
+	tmpl, err := template.New("template").Parse(templateString)
+	if err != nil {
+		log.Panicf("Error parsing template: %v", err)
+	}
+
+	var tmplBuffer bytes.Buffer
+	tmplWriter := io.Writer(&tmplBuffer)
+	err = tmpl.Execute(tmplWriter, event)
+
+	if err != nil {
+		log.Panicf("Error executing template: %v", err)
+	}
+
+	return tmplBuffer.String()
 }
 
 func setupMqtt() {
@@ -159,17 +176,6 @@ func setupConfiguration() {
 	viper.AddConfigPath("/etc/telldusmq/")
 	viper.AddConfigPath("$HOME/.telldusmq/")
 	viper.AddConfigPath("./")
-
-	viper.SetDefault("Mqtt.Broker", "tcp://localhost:1883")
-	viper.SetDefault("Mqtt.ClientId", "TelldusMq")
-	viper.SetDefault("Mqtt.Username", "")
-	viper.SetDefault("Mqtt.Password", "")
-	viper.SetDefault("Mqtt.Events.PublishTopic", "tellstick/events/{{.Protocol}}/{{.Model}}/{{.House}}/{{.Unit}}/{{.Group}}")
-	viper.SetDefault("Mqtt.Events.PublishPayload", "{{.Method}}")
-	viper.SetDefault("Mqtt.Events.SubscribeTopic", "tellstick/events")
-	viper.SetDefault("Mqtt.Sensors.PublishTopic", "tellstick/sensors/{{.Protocol}}/{{.Model}}/{{.House}}/{{.Unit}}/{{.Group}}")
-	viper.SetDefault("Mqtt.Sensors.PublishPayload", "Temp: {{.Temp}} Humidity: {{.Humidity}}")
-	viper.SetDefault("Mqtt.Sensors.SubscribeTopic", "tellstick/sensors")
 
 	configError := viper.ReadInConfig()
 	if configError != nil {

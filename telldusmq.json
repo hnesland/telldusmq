@@ -10,9 +10,12 @@
             "SubscribeTopic": "tellstick/events"
         },
         "Sensors": {
-            "PublishTopic": "tellstick/sensors/{{.Protocol}}/{{.Model}}/{{.Id}}",
-            "PublishPayload": "Temp: {{.Temp}} Humidity: {{.Humidity}}",
+            "PublishTopic": "tellstick/sensors/{{.Protocol}}/{{.Model}}/{{.Id}}//{{.DataType}}",
+            "PublishPayload": "{{.Value}}",
             "SubscribeTopic": "tellstick/sensors"
         }
+    },
+    "Tellstick": {
+        "SplitTemperatureAndHumidity": true
     }
 }
