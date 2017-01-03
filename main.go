@@ -178,7 +178,7 @@ func handleTelldusDeviceIDEvent(event TellstickMQTTBrokerEvent) {
 		result = int(C.tdTurnOn(C.int(event.DeviceID)))
 		log.Printf("Tellstick turn on: %s (%d)\n", tellduscore.GetResultMessage(result), result)
 		break
-	case "learn":
+	case tellduscore.TellstickLearnString:
 		result = int(C.tdLearn(C.int(event.DeviceID)))
 		log.Printf("Tellstick learn: %s (%d)\n", tellduscore.GetResultMessage(result), result)
 		break

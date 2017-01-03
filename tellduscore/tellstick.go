@@ -18,6 +18,9 @@ const TellstickTurnonString = "turnon"
 // TellstickTurnoffString constant for turn off
 const TellstickTurnoffString = "turnoff"
 
+// TellstickLearnString constant for learn
+const TellstickLearnString = "learn"
+
 // GetResultMessage returns a tellstick result message
 func GetResultMessage(tellResult int) string {
 	resultType := "UNKNOWN ERROR"
