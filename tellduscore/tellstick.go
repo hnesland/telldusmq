@@ -1,7 +1,5 @@
 package tellduscore
 
-import "C"
-
 // TellstickDim constant for dimming
 const TellstickDim = 1
 
