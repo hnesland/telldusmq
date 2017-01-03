@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/fsnotify/fsnotify"
+	"github.com/hnesland/telldusmq/tellduscore"
 	"github.com/spf13/viper"
 )
 
@@ -27,6 +30,7 @@ static inline void rawEvent(const char *data, int controllerId, int callbackId, 
 static inline void initTelldus() {
 	tdRegisterRawDeviceEvent(&rawEvent, NULL);
 }
+
 */
 import "C"
 
@@ -45,6 +49,16 @@ type TelldusEvent struct {
 	Humidity string
 	Value    string
 	DataType string
+}
+
+// TellstickMQTTBrokerEvent describes incoming events on MQTT
+type TellstickMQTTBrokerEvent struct {
+	Protocol string `json:"protocol"`
+	DeviceID int    `json:"device_id"`
+	House    uint   `json:"house"`
+	Unit     int    `json:"unit"`
+	Method   string `json:"method"`
+	Level    int    `json:"level"`
 }
 
 var mqttClient MQTT.Client
@@ -152,6 +166,77 @@ func rawTelldusEvent(str *C.char) {
 	}
 }
 
+func handleTelldusDeviceIDEvent(event TellstickMQTTBrokerEvent) {
+	var result int
+
+	switch event.Method {
+	case tellduscore.TellstickTurnoffString:
+		result = int(C.tdTurnOff(C.int(event.DeviceID)))
+		log.Printf("Tellstick turn off: %s (%d)\n", tellduscore.GetResultMessage(result), result)
+		break
+	case tellduscore.TellstickTurnonString:
+		result = int(C.tdTurnOn(C.int(event.DeviceID)))
+		log.Printf("Tellstick turn on: %s (%d)\n", tellduscore.GetResultMessage(result), result)
+		break
+	case "learn":
+		result = int(C.tdLearn(C.int(event.DeviceID)))
+		log.Printf("Tellstick learn: %s (%d)\n", tellduscore.GetResultMessage(result), result)
+		break
+	case tellduscore.TellstickDimString:
+		result = int(C.tdDim(C.int(event.DeviceID), C.uchar(event.Level)))
+		log.Printf("Tellstick dim: %s (%d)\n", tellduscore.GetResultMessage(result), result)
+		break
+	default:
+		log.Printf("Unknown tellstick method: %s\n", event.Method)
+	}
+}
+
+func onMessageReceived(client MQTT.Client, message MQTT.Message) {
+	//log.Printf("Received message on topic: %s\nMessage: %s\n", message.Topic(), message.Payload())
+
+	var event TellstickMQTTBrokerEvent
+	err := json.Unmarshal(message.Payload(), &event)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	log.Printf("Transmit event requested: %+v\n", event)
+
+	if event.Protocol == "telldusdevice" {
+		handleTelldusDeviceIDEvent(event)
+		return
+	}
+
+	if event.Protocol != "archtech" {
+		log.Printf("Unsupported protocol: %s\n", event.Protocol)
+		return
+	}
+
+	method := 0
+	switch event.Method {
+	case tellduscore.TellstickTurnoffString:
+		method = tellduscore.TellstickTurnoff
+		break
+	case tellduscore.TellstickTurnonString:
+		method = tellduscore.TellstickTurnon
+		break
+	case tellduscore.TellstickDimString:
+		method = tellduscore.TellstickDim
+		break
+	}
+
+	rawCommand := tellduscore.GetRawCommand(event.House, event.Unit, method, event.Level)
+	log.Printf("Translated to: %02X\n", rawCommand)
+	tellResult := C.tdSendRawCommand(C.CString(rawCommand), 0)
+
+	if tellResult != 0 { // !TELLSTICK_SUCCESS
+		resultType := tellduscore.GetResultMessage(int(tellResult))
+
+		log.Printf("Error transmitting command: (%d) %s", tellResult, resultType)
+	} else {
+		log.Println("Tellstick reports success.")
+	}
+}
+
 func parseTemplate(templateString string, event *TelldusEvent) string {
 	tmpl, err := template.New("template").Parse(templateString)
 	if err != nil {
@@ -177,10 +262,20 @@ func setupMqtt() {
 	opts.SetUsername(viper.GetString("Mqtt.Username"))
 	opts.SetPassword(viper.GetString("Mqtt.Password"))
 
+	topic := viper.GetString("Mqtt.Events.SubscribeTopic")
+	qos := 0
+
+	opts.OnConnect = func(c MQTT.Client) {
+		if token := c.Subscribe(topic, byte(qos), onMessageReceived); token.Wait() && token.Error() != nil {
+			log.Panicf("Unable to subscribe to topic: %v", token.Error())
+		}
+	}
+
 	mqttClient = MQTT.NewClient(opts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		log.Panicf("Unable to connect to MQTT: %v", token.Error())
 	}
+
 }
 
 func setupConfiguration() {
