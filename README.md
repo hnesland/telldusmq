@@ -63,6 +63,8 @@ A few methods in telldus-core for transmitting actions are implemented. These ar
 
 The `method` can be one of the described methods above, and `device_id` must be a device defined in tellstick.conf. Protocol must be `telldusdevice`.
 
+We also listen to the topic defined in `MQTT => Events => SubscribeDeviceEvents`. This topic can either be a specified device id like `tellstick/device/events/13` or a wild card defining all devices `tellstick/device/events/#`. The payload for these events is simply the Tellstick method described above.
+
 ### Raw Commands
 
 We don't really support raw commands yet, but we hopefully will very soon. There is some initial support for archtech, but it probably won't work.

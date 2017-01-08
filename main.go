@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -237,6 +238,35 @@ func onMessageReceived(client MQTT.Client, message MQTT.Message) {
 	}
 }
 
+func onTellstickDeviceMessageReceived(client MQTT.Client, message MQTT.Message) {
+	topic := message.Topic()
+	topicElements := strings.Split(topic, "/")
+	deviceIDString := topicElements[len(topicElements)-1]
+	deviceID, err := strconv.Atoi(deviceIDString)
+
+	if err != nil {
+		log.Fatalf("Error parsing device id '%s': %v\n", deviceIDString, err)
+		return
+	}
+
+	event := TellstickMQTTBrokerEvent{
+		DeviceID: deviceID,
+		Method:   string(message.Payload()),
+		Protocol: "telldusdevice"}
+
+	if event.Method == tellduscore.TellstickDimString {
+		dimLevelString := string(message.Payload())
+		dimLevel, err := strconv.Atoi(dimLevelString)
+		if err != nil {
+			log.Fatalf("Error parsing dim level '%s': %v\n", dimLevelString, err)
+			return
+		}
+		event.Level = dimLevel
+	}
+
+	handleTelldusDeviceIDEvent(event)
+}
+
 func parseTemplate(templateString string, event *TelldusEvent) string {
 	tmpl, err := template.New("template").Parse(templateString)
 	if err != nil {
@@ -263,10 +293,17 @@ func setupMqtt() {
 	opts.SetPassword(viper.GetString("Mqtt.Password"))
 
 	topic := viper.GetString("Mqtt.Events.SubscribeTopic")
+	deviceTopic := viper.GetString("Mqtt.Events.SubscribeDeviceEvents")
 	qos := 0
 
 	opts.OnConnect = func(c MQTT.Client) {
+		log.Printf("Subscribing to: %s\n", topic)
 		if token := c.Subscribe(topic, byte(qos), onMessageReceived); token.Wait() && token.Error() != nil {
+			log.Panicf("Unable to subscribe to topic: %v", token.Error())
+		}
+
+		log.Printf("Subscribing to: %s\n", deviceTopic)
+		if token := c.Subscribe(deviceTopic, byte(qos), onTellstickDeviceMessageReceived); token.Wait() && token.Error() != nil {
 			log.Panicf("Unable to subscribe to topic: %v", token.Error())
 		}
 	}
