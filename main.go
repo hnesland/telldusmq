@@ -170,6 +170,19 @@ func rawTelldusEvent(str *C.char) {
 func handleTelldusDeviceIDEvent(event TellstickMQTTBrokerEvent) {
 	var result int
 
+	if viper.GetBool("Tellstick.ReverseMappingOnIncoming") {
+		turnOn := viper.GetString("Tellstick.MapTurnOnTo")
+		turnOff := viper.GetString("Tellstick.MapTurnOffTo")
+
+		if len(turnOn) > 0 && event.Method == turnOn {
+			event.Method = "turnon"
+		}
+
+		if len(turnOff) > 0 && event.Method == turnOff {
+			event.Method = "turnoff"
+		}
+	}
+
 	switch event.Method {
 	case tellduscore.TellstickTurnoffString:
 		result = int(C.tdTurnOff(C.int(event.DeviceID)))

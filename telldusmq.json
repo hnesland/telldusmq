@@ -18,6 +18,7 @@
     "Tellstick": {
         "SplitTemperatureAndHumidity": true,
         "MapTurnOnTo": "ON",
-        "MapTurnOffTo": "OFF"
+        "MapTurnOffTo": "OFF",
+        "ReverseMappingOnIncoming": true
     }
 }
