@@ -86,4 +86,4 @@ The WIP is published anyway. MQTT-payload for these are:
 
 # Reporting Bugs
 
-Please rebort bugs by raising issues for this project in [Github](https://github.com/hnesland/telldusmq/issues).
+Please report bugs by raising issues for this project in [Github](https://github.com/hnesland/telldusmq/issues).
