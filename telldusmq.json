@@ -16,6 +16,8 @@
         }
     },
     "Tellstick": {
+        "UnixSocketEvents": "/tmp/TelldusEvents",
+        "UnixSocketClient": "/tmp/TelldusClient",
         "SplitTemperatureAndHumidity": true,
         "MapTurnOnTo": "ON",
         "MapTurnOffTo": "OFF",
