@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 	"text/template"
@@ -16,24 +18,6 @@ import (
 	"github.com/hnesland/telldusmq/tellduscore"
 	"github.com/spf13/viper"
 )
-
-/*
-#cgo LDFLAGS: -L. -ltelldus-core
-#include <stdio.h>
-#include <telldus-core.h>
-
-void rawTelldusEvent(char *);
-
-static inline void rawEvent(const char *data, int controllerId, int callbackId, void *context) {
-	rawTelldusEvent((char*)data);
-}
-
-static inline void initTelldus() {
-	tdRegisterRawDeviceEvent(&rawEvent, NULL);
-}
-
-*/
-import "C"
 
 // TelldusEvent describes telldus events ..
 type TelldusEvent struct {
@@ -63,10 +47,80 @@ type TellstickMQTTBrokerEvent struct {
 }
 
 var mqttClient MQTT.Client
+var telldusSocket net.Conn
 
-//export rawTelldusEvent
-func rawTelldusEvent(str *C.char) {
-	data := strings.Split(C.GoString(str), ";")
+// readTelldusRawDeviceEvents reads from Telldus unix socket and parses the raw event strings in rawTelldusEvent()
+func readTelldusRawDeviceEvents(errCh chan error) {
+	buf := make([]byte, 1024)
+	for {
+		if telldusSocket != nil {
+			n, err := telldusSocket.Read(buf[:])
+			if err != nil {
+				log.Printf("read error: %q", err)
+				errCh <- err
+				return
+			}
+
+			telldusEventString := string(buf[0:n])
+			if strings.Contains(telldusEventString, "TDRawDeviceEvent") {
+				classBegins := strings.Index(telldusEventString, "class")
+				str := buf[classBegins : n-3]
+				rawTelldusEvent(string(str))
+			}
+		} else {
+			errCh <- errors.New("socket not available")
+			return
+		}
+	}
+}
+
+// sendTelldusDeviceEvent transmits a telldus-event to the client unix socket.
+func sendTelldusDeviceEvent(message string) string {
+	tellstickClientUnixSocket := viper.GetString("Tellstick.UnixSocketClient")
+	if tellstickClientUnixSocket == "" {
+		tellstickClientUnixSocket = "/tmp/TelldusClient"
+	}
+
+	clientSocket, err := net.Dial("unix", tellstickClientUnixSocket)
+	if err != nil {
+		return ""
+	}
+
+	clientSocket.Write([]byte(message))
+	buf := make([]byte, 1024)
+	n, err := clientSocket.Read(buf[:])
+	telldusResult := string(buf[0:n])
+
+	return telldusResult
+}
+
+// setupTelldus initializes the event unix socket from telldus
+func setupTelldus() {
+	errCh := make(chan error)
+
+	tellstickEventsUnixSocket := viper.GetString("Tellstick.UnixSocketEvents")
+	if tellstickEventsUnixSocket == "" {
+		tellstickEventsUnixSocket = "/tmp/TelldusEvents"
+	}
+
+	for {
+		log.Printf("Connecting to Telldusd Events Socket\n")
+		var err error
+		telldusSocket, err = net.Dial("unix", tellstickEventsUnixSocket)
+
+		go readTelldusRawDeviceEvents(errCh)
+		err = <-errCh
+
+		if err != nil {
+			log.Printf("Telldusd connection error: %q: Please verify that '%s' is readable. Retry in 5 sec ..\n", err, tellstickEventsUnixSocket)
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func rawTelldusEvent(str string) {
+	data := strings.Split(str, ";")
 	event := &TelldusEvent{
 		Id:       "0",
 		House:    "0",
@@ -185,19 +239,27 @@ func handleTelldusDeviceIDEvent(event TellstickMQTTBrokerEvent) {
 
 	switch event.Method {
 	case tellduscore.TellstickTurnoffString:
-		result = int(C.tdTurnOff(C.int(event.DeviceID)))
+		if telldusSocket != nil {
+			result = tellduscore.GetIntFromResult(sendTelldusDeviceEvent(tellduscore.GetTellstickMessage("tdTurnOff", event.DeviceID)))
+		}
 		log.Printf("Tellstick turn off: %s (%d)\n", tellduscore.GetResultMessage(result), result)
 		break
 	case tellduscore.TellstickTurnonString:
-		result = int(C.tdTurnOn(C.int(event.DeviceID)))
+		if telldusSocket != nil {
+			result = tellduscore.GetIntFromResult(sendTelldusDeviceEvent(tellduscore.GetTellstickMessage("tdTurnOn", event.DeviceID)))
+		}
 		log.Printf("Tellstick turn on: %s (%d)\n", tellduscore.GetResultMessage(result), result)
 		break
 	case tellduscore.TellstickLearnString:
-		result = int(C.tdLearn(C.int(event.DeviceID)))
+		if telldusSocket != nil {
+			result = tellduscore.GetIntFromResult(sendTelldusDeviceEvent(tellduscore.GetTellstickMessage("tdLearn", event.DeviceID)))
+		}
 		log.Printf("Tellstick learn: %s (%d)\n", tellduscore.GetResultMessage(result), result)
 		break
 	case tellduscore.TellstickDimString:
-		result = int(C.tdDim(C.int(event.DeviceID), C.uchar(event.Level)))
+		if telldusSocket != nil {
+			result = tellduscore.GetIntFromResult(sendTelldusDeviceEvent(tellduscore.GetTellstickMessageLevel("tdDim", event.DeviceID, event.Level)))
+		}
 		log.Printf("Tellstick dim: %s (%d)\n", tellduscore.GetResultMessage(result), result)
 		break
 	default:
@@ -220,35 +282,37 @@ func onMessageReceived(client MQTT.Client, message MQTT.Message) {
 		return
 	}
 
-	if event.Protocol != "archtech" {
-		log.Printf("Unsupported protocol: %s\n", event.Protocol)
-		return
-	}
+	/*
+		if event.Protocol != "archtech" {
+			log.Printf("Unsupported protocol: %s\n", event.Protocol)
+			return
+		}
 
-	method := 0
-	switch event.Method {
-	case tellduscore.TellstickTurnoffString:
-		method = tellduscore.TellstickTurnoff
-		break
-	case tellduscore.TellstickTurnonString:
-		method = tellduscore.TellstickTurnon
-		break
-	case tellduscore.TellstickDimString:
-		method = tellduscore.TellstickDim
-		break
-	}
+		method := 0
+		switch event.Method {
+		case tellduscore.TellstickTurnoffString:
+			method = tellduscore.TellstickTurnoff
+			break
+		case tellduscore.TellstickTurnonString:
+			method = tellduscore.TellstickTurnon
+			break
+		case tellduscore.TellstickDimString:
+			method = tellduscore.TellstickDim
+			break
+		}
 
-	rawCommand := tellduscore.GetRawCommand(event.House, event.Unit, method, event.Level)
-	log.Printf("Translated to: %02X\n", rawCommand)
-	tellResult := C.tdSendRawCommand(C.CString(rawCommand), 0)
+		rawCommand := tellduscore.GetRawCommand(event.House, event.Unit, method, event.Level)
+		log.Printf("Translated to: %02X\n", rawCommand)
+		tellResult := C.tdSendRawCommand(C.CString(rawCommand), 0)
 
-	if tellResult != 0 { // !TELLSTICK_SUCCESS
-		resultType := tellduscore.GetResultMessage(int(tellResult))
+		if tellResult != 0 { // !TELLSTICK_SUCCESS
+			resultType := tellduscore.GetResultMessage(int(tellResult))
 
-		log.Printf("Error transmitting command: (%d) %s", tellResult, resultType)
-	} else {
-		log.Println("Tellstick reports success.")
-	}
+			log.Printf("Error transmitting command: (%d) %s", tellResult, resultType)
+		} else {
+			log.Println("Tellstick reports success.")
+		}
+	*/
 }
 
 func onTellstickDeviceMessageReceived(client MQTT.Client, message MQTT.Message) {
@@ -350,7 +414,7 @@ func main() {
 	log.Println("Started Message Queue for Telldus Core")
 	setupConfiguration()
 	setupMqtt()
-	C.initTelldus()
+	go setupTelldus()
 
 	for {
 		time.Sleep(30 * time.Second)

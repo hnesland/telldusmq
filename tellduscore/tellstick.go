@@ -1,5 +1,11 @@
 package tellduscore
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 // TellstickDim constant for dimming
 const TellstickDim = 1
 
@@ -66,4 +72,24 @@ func GetResultMessage(tellResult int) string {
 	}
 
 	return resultType
+}
+
+// GetTellstickMessageLevel returns a formatted string for Tellstick commands
+func GetTellstickMessageLevel(message string, id int, level int) string {
+	return fmt.Sprintf("%d:%si%dsi%ds", len(message), message, id, level)
+}
+
+// GetTellstickMessage returns a formatted string for Tellstick commands
+func GetTellstickMessage(message string, id int) string {
+	return fmt.Sprintf("%d:%si%ds", len(message), message, id)
+}
+
+// GetIntFromResult parses i%ds-messages and returns the integer
+func GetIntFromResult(result string) int {
+	i, err := strconv.Atoi(result[1:strings.Index(result, "s")])
+	if err != nil {
+		return -1
+	}
+
+	return i
 }
