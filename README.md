@@ -7,7 +7,7 @@ The broker is installed with standard [Go](https://golang.org) tools:
 go get github.com/hnesland/telldusmq
 ```
 
-The broker depends on libtelldus-core and libtelldus-core-dev-packages. Please see the [installation instructions](http://developer.telldus.com/wiki/TellStickInstallationUbuntu) for Telldus Core.
+The broker depends on telldus-core to communicate with Tellstick.
 
 Other dependencies are handled by Go.
 
